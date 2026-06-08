@@ -20,7 +20,7 @@ structures_path = results_path / "structures"
 calculations_path = results_path / "calculations"
 
 
-qe_path   = Path("/Users/famkepotze/Desktop/3S/NV_center_3S/QE_extra_files/qe-7.5")
+qe_path   = base_path / "qe-7.5"
 
 pw_path   = qe_path / "bin/pw.x"
 pseudo_dir = qe_path / "pseudo"
@@ -110,6 +110,8 @@ import subprocess
 
 class QEWorkflowEngine:
 
+    VALENCE = {"C": 4, "N": 5}
+
     def __init__(self):
 
         self.labels = {
@@ -157,13 +159,24 @@ class QEWorkflowEngine:
     # SETTINGS
     # ======================================================
 
-    def settings(self, material):
+    def _nbnd(self, structure, charge=0, nspin=1):
+        """Calculate nbnd from valence electrons of the structure."""
+        n_elec = sum(self.VALENCE[s] for s in structure.get_chemical_symbols())
+        n_elec -= charge  # charge=-1 adds one electron
+        if nspin == 1:
+            n_occ = n_elec // 2
+        else:
+            n_occ = n_elec  # per-spin counting for nspin=2
+        return max(n_occ + 20, int(n_occ * 1.2))
+
+    def settings(self, material, structure):
 
         if material == "diamond":
             return dict(
                 nspin=1,
                 occupations="fixed",
-                charge=0
+                charge=0,
+                nbnd=self._nbnd(structure, charge=0, nspin=1),
             )
 
         elif material == "NV_center":
@@ -171,7 +184,8 @@ class QEWorkflowEngine:
                 nspin=2,
                 occupations="smearing",
                 charge=-1,
-                degauss=0.0005
+                degauss=0.0005,
+                nbnd=self._nbnd(structure, charge=-1, nspin=2),
             )
 
     # ======================================================
@@ -196,9 +210,9 @@ class QEWorkflowEngine:
 /
 """
 
-    def system(self, structure, material):
+    def system(self, structure, material, calc="scf"):
 
-        s = self.settings(material)
+        s = self.settings(material, structure)
 
         nat = len(structure)
         ntyp = len(set(structure.get_chemical_symbols()))
@@ -210,10 +224,20 @@ class QEWorkflowEngine:
     ecutwfc = 60,
     ecutrho = 480,
     nspin = {s['nspin']},
+    nbnd = {s['nbnd']},
 """
 
         if material == "NV_center":
-            block += f"""    tot_charge = {s['charge']},
+            if calc == "nscf":
+                # tetrahedra for accurate DOS integration; no degauss needed
+                block += f"""    tot_charge = {s['charge']},
+    occupations = 'tetrahedra',
+    starting_magnetization(1) = 0.0,
+    starting_magnetization(2) = 0.5,
+"""
+            else:
+                # gaussian smearing for SCF convergence
+                block += f"""    tot_charge = {s['charge']},
     occupations = '{s['occupations']}',
     smearing = 'gaussian',
     degauss = {s['degauss']},
@@ -301,7 +325,7 @@ class QEWorkflowEngine:
 
         text = (
             self.control(prefix, "nscf")
-            + self.system(structure, material)
+            + self.system(structure, material, calc="nscf")
             + self.electrons()
             + "\nCELL_PARAMETERS angstrom\n"
             + self.cell(structure)

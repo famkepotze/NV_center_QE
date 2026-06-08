@@ -9,11 +9,14 @@ from helper import (
     projwfc_path,
 )
 
-materials = ["diamond", "NV_center"]
+materials = [
+    #"diamond", 
+    "NV_center"
+    ]
 
 sizes = [
-    "1x1x1",
-    "2x2x2",
+    #"1x1x1",
+    #"2x2x2",
     "3x3x3",
 ]
 
@@ -21,6 +24,7 @@ skip = {
     ("diamond", "2x2x2"),
     ("diamond", "3x3x3"),
 }
+
 
 # ======================================================
 # HELPER
@@ -31,7 +35,6 @@ def timestamp():
     return datetime.now().strftime(
         "%Y-%m-%d %H:%M:%S"
     )
-
 
 def runtime_string(seconds):
 
